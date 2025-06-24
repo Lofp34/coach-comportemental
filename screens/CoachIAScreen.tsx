@@ -3,6 +3,8 @@ import { AppContext } from '../contexts/AppContext';
 import { getGeminiChatResponseStream } from '../services/geminiService';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { PaperAirplaneIcon, UserIcon, ChatBubbleLeftEllipsisIcon as AiIcon } from '../components/icons';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ChatMessage {
   role: 'user' | 'model';
@@ -20,7 +22,7 @@ const CoachIAScreen: React.FC = () => {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [history]);
+  }, [history.length]);
 
   useEffect(() => {
     // We don't send an initial message anymore, the user starts the conversation.
@@ -65,7 +67,7 @@ const CoachIAScreen: React.FC = () => {
         context += `- Son profil principal n'est pas encore défini.\n`;
       }
       if (adaptabilityScore) {
-        context += `- Son score d'adaptabilité est de ${adaptabilityScore}.\n`;
+        context += `- Son score d'adaptabilité est de ${adaptabilityScore} sur 20.\n`;
       }
       
       systemInstruction = {
@@ -76,14 +78,20 @@ const CoachIAScreen: React.FC = () => {
     await getGeminiChatResponseStream(
       apiHistory,
       systemInstruction,
+      undefined, // No specific generation config for now
       (chunk) => {
         setHistory(prevHistory => {
-          const newHistory = [...prevHistory];
-          const lastMessage = newHistory[newHistory.length - 1];
-          if (lastMessage && lastMessage.role === 'model') {
-            lastMessage.parts[0].text += chunk;
-          }
-          return newHistory;
+          // Correct, immutable way to update the last message in the history array
+          return prevHistory.map((msg, index) => {
+            if (index === prevHistory.length - 1 && msg.role === 'model') {
+              // Return a new message object with the updated text
+              return {
+                ...msg,
+                parts: [{ text: msg.parts[0].text + chunk }],
+              };
+            }
+            return msg;
+          });
         });
       },
       (err) => {
@@ -127,7 +135,24 @@ const CoachIAScreen: React.FC = () => {
                     : 'bg-white text-slate-700 rounded-bl-none border border-slate-200'
                 }`}
               >
-                <p className="text-sm whitespace-pre-wrap">{msg.parts[0].text}</p>
+                {msg.role === 'model' ? (
+                  <div className="prose prose-sm max-w-none text-slate-700">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        p: ({node, ...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                        ul: ({node, ...props}) => <ul className="list-disc list-inside" {...props} />,
+                        ol: ({node, ...props}) => <ol className="list-decimal list-inside" {...props} />,
+                        strong: ({node, ...props}) => <strong className="font-bold text-slate-700" {...props} />,
+                        a: ({node, ...props}) => <a className="text-sky-600 hover:text-sky-700" {...props} />,
+                      }}
+                    >
+                      {msg.parts[0].text}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <p className="text-sm whitespace-pre-wrap">{msg.parts[0].text}</p>
+                )}
                 <p className={`text-xs mt-1 ${msg.role === 'user' ? 'text-sky-200 text-right' : 'text-slate-400 text-left'}`}>
                   {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </p>

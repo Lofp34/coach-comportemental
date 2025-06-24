@@ -26,6 +26,7 @@ interface SystemInstruction {
 export const getGeminiChatResponseStream = async (
   history: Content[],
   systemInstruction: SystemInstruction | undefined,
+  generationConfig: GenerationConfig | undefined,
   onChunk: (chunk: string) => void,
   onError: (error: string) => void,
   onComplete: () => void
@@ -45,6 +46,7 @@ export const getGeminiChatResponseStream = async (
       body: JSON.stringify({ 
         contents: history,
         system_instruction: systemInstruction,
+        generation_config: generationConfig,
        }),
     });
 
