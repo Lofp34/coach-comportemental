@@ -1,0 +1,5 @@
+{
+  "name": "Coach Comportemental",
+  "description": "Une application de coaching comportemental pour aider les utilisateurs à identifier leur profil, comprendre les dynamiques, recevoir des conseils personnalisés et gérer une bibliothèque de profils.",
+  "requestFramePermissions": []
+}
