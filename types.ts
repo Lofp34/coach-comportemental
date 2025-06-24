@@ -91,6 +91,7 @@ export interface AppContextType {
   setAdaptabilityScore: React.Dispatch<React.SetStateAction<number | null>>;
   setSavedProfiles: React.Dispatch<React.SetStateAction<SavedProfile[]>>;
   setUserProfile: React.Dispatch<React.SetStateAction<UserProfile | null>>;
+  signOut: () => Promise<void>;
   // Note: Most setters are now handled via Supabase calls within the context
   // or other components, so they are not exposed here.
 }

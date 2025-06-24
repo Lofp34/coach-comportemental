@@ -72,6 +72,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, [user]);
 
+  const signOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      // The onAuthStateChange listener will handle setting session/user to null.
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
 
   const contextValue: AppContextType = {
     isAuthenticated: !!session,
@@ -83,6 +92,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     isLoading,
     setAdaptabilityScore,
     setSavedProfiles,
+    signOut,
   };
 
   return (
