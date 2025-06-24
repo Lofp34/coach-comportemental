@@ -1,140 +1,93 @@
-
 import React, { createContext, useState, useEffect, ReactNode } from 'react';
-import { SavedProfile, DominantSecondaryProfile, ProfileColor } from '../types';
-import { MOCK_USER_ID } from '../constants';
-
-interface AppContextType {
-  isAuthenticated: boolean;
-  setIsAuthenticated: React.Dispatch<React.SetStateAction<boolean>>;
-  userProfile: SavedProfile | null;
-  setUserProfile: (profile: SavedProfile | null) => void;
-  savedProfiles: SavedProfile[];
-  addProfile: (profile: Omit<SavedProfile, 'id' | 'isPrimaryUser'>) => void;
-  updateProfile: (profile: SavedProfile) => void;
-  deleteProfile: (profileId: string) => void;
-  setAsPrimaryProfile: (profileId: string) => void;
-  adaptabilityScore: number | null;
-  setAdaptabilityScore: React.Dispatch<React.SetStateAction<number | null>>;
-  adaptabilityNotes: string;
-  setAdaptabilityNotes: React.Dispatch<React.SetStateAction<string>>;
-}
+import { UserProfile, SavedProfile, AppContextType } from '../types';
+import { supabase } from '../services/supabaseClient';
+import { Session, User } from '@supabase/supabase-js';
 
 export const AppContext = createContext<AppContextType>({} as AppContextType);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false); // Start as not authenticated
-  const [userProfile, setUserProfileState] = useState<SavedProfile | null>(null);
-  const [savedProfiles, setSavedProfiles] = useState<SavedProfile[]>([]);
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [adaptabilityScore, setAdaptabilityScore] = useState<number | null>(null);
-  const [adaptabilityNotes, setAdaptabilityNotes] = useState<string>('');
-
-  // Load from localStorage on mount
-  useEffect(() => {
-    const storedAuth = localStorage.getItem('behavioralCoachIsAuthenticated');
-    if (storedAuth) setIsAuthenticated(JSON.parse(storedAuth));
-    
-    const storedUserProfile = localStorage.getItem('behavioralCoachUserProfile');
-    if (storedUserProfile) setUserProfileState(JSON.parse(storedUserProfile));
-
-    const storedProfiles = localStorage.getItem('behavioralCoachSavedProfiles');
-    if (storedProfiles) setSavedProfiles(JSON.parse(storedProfiles));
-
-    const storedAdaptabilityScore = localStorage.getItem('behavioralCoachAdaptabilityScore');
-    if (storedAdaptabilityScore) setAdaptabilityScore(JSON.parse(storedAdaptabilityScore));
-
-    const storedAdaptabilityNotes = localStorage.getItem('behavioralCoachAdaptabilityNotes');
-    if (storedAdaptabilityNotes) setAdaptabilityNotes(storedAdaptabilityNotes);
-  }, []);
-
-  // Save to localStorage whenever state changes
-  useEffect(() => {
-    localStorage.setItem('behavioralCoachIsAuthenticated', JSON.stringify(isAuthenticated));
-  }, [isAuthenticated]);
+  const [savedProfiles, setSavedProfiles] = useState<SavedProfile[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    localStorage.setItem('behavioralCoachUserProfile', JSON.stringify(userProfile));
-  }, [userProfile]);
-  
-  useEffect(() => {
-    localStorage.setItem('behavioralCoachSavedProfiles', JSON.stringify(savedProfiles));
-  }, [savedProfiles]);
-
-  useEffect(() => {
-    localStorage.setItem('behavioralCoachAdaptabilityScore', JSON.stringify(adaptabilityScore));
-  }, [adaptabilityScore]);
-
-  useEffect(() => {
-    localStorage.setItem('behavioralCoachAdaptabilityNotes', JSON.stringify(adaptabilityNotes));
-  }, [adaptabilityNotes]);
-
-
-  const setUserProfile = (profile: SavedProfile | null) => {
-    setUserProfileState(profile);
-    if (profile) {
-        setSavedProfiles(prev => {
-            const existing = prev.find(p => p.id === profile.id);
-            if(existing) return prev.map(p => p.id === profile.id ? {...profile, isPrimaryUser: true} : {...p, isPrimaryUser: false});
-            return [{...profile, isPrimaryUser: true}, ...prev.map(p => ({...p, isPrimaryUser: false}))];
-        });
-    } else { // if unsetting primary, make sure no other profile is primary.
-         setSavedProfiles(prev => prev.map(p => ({...p, isPrimaryUser: false})));
-    }
-  };
-  
-  const addProfile = (profileData: Omit<SavedProfile, 'id' | 'isPrimaryUser'>) => {
-    const newProfile: SavedProfile = { 
-        ...profileData, 
-        id: Date.now().toString(), 
-        isPrimaryUser: false 
+    const getSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setSession(session);
+        setUser(session?.user ?? null);
+      } catch (error) {
+        console.error("Error getting session:", error);
+      } finally {
+        setIsLoading(false);
+      }
     };
-    if (profileData.name.toLowerCase() === 'moi-même' || profileData.name.toLowerCase() === 'my self') {
-      newProfile.isPrimaryUser = true;
-      setUserProfileState(newProfile); // also set as userProfile
-      // Ensure other profiles are not primary
-      setSavedProfiles(prev => [newProfile, ...prev.map(p => ({...p, isPrimaryUser: false}))]);
+    
+    getSession();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+      }
+    );
+
+    return () => {
+      authListener?.subscription.unsubscribe();
+    };
+  }, []);
+  
+  useEffect(() => {
+    if (user) {
+      const fetchUserProfile = async () => {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (error && error.code !== 'PGRST116') { // Ignore 'range not found' errors for new users
+          console.error('Error fetching user profile:', error);
+        } else if (data) {
+          setUserProfile({
+            id: data.id,
+            username: data.username,
+            fullName: data.full_name,
+            avatarUrl: data.avatar_url,
+            profileResult: data.profile_result || [],
+            adaptabilityScore: data.adaptability_score,
+          });
+          setAdaptabilityScore(data.adaptability_score);
+        }
+      };
+
+      fetchUserProfile();
     } else {
-      setSavedProfiles(prev => [newProfile, ...prev]);
+      setUserProfile(null);
+      setAdaptabilityScore(null);
+      setSavedProfiles([]);
     }
-  };
+  }, [user]);
 
-  const updateProfile = (updatedProfile: SavedProfile) => {
-    setSavedProfiles(prev => prev.map(p => p.id === updatedProfile.id ? updatedProfile : p));
-    if (updatedProfile.isPrimaryUser) {
-        setUserProfileState(updatedProfile);
-    } else if (userProfile?.id === updatedProfile.id && !updatedProfile.isPrimaryUser) {
-        // If current primary user profile is updated to not be primary, clear userProfile state
-        setUserProfileState(null);
-    }
-  };
 
-  const deleteProfile = (profileId: string) => {
-    setSavedProfiles(prev => prev.filter(p => p.id !== profileId));
-    if (userProfile?.id === profileId) {
-      setUserProfileState(null);
-    }
+  const contextValue: AppContextType = {
+    isAuthenticated: !!session,
+    user,
+    userProfile,
+    setUserProfile,
+    adaptabilityScore,
+    savedProfiles,
+    isLoading,
+    setAdaptabilityScore,
+    setSavedProfiles,
   };
-
-  const setAsPrimaryProfile = (profileId: string) => {
-    let newPrimaryProfile: SavedProfile | null = null;
-    const updatedList = savedProfiles.map(p => {
-        const isPrimary = p.id === profileId;
-        if(isPrimary) newPrimaryProfile = {...p, isPrimaryUser: true};
-        return {...p, isPrimaryUser: isPrimary };
-    });
-    setSavedProfiles(updatedList);
-    setUserProfileState(newPrimaryProfile);
-  };
-
 
   return (
-    <AppContext.Provider value={{ 
-      isAuthenticated, setIsAuthenticated,
-      userProfile, setUserProfile,
-      savedProfiles, addProfile, updateProfile, deleteProfile, setAsPrimaryProfile,
-      adaptabilityScore, setAdaptabilityScore,
-      adaptabilityNotes, setAdaptabilityNotes
-    }}>
-      {children}
+    <AppContext.Provider value={contextValue}>
+      {!isLoading && children}
     </AppContext.Provider>
   );
 };

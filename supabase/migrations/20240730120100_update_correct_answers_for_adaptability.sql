@@ -1,0 +1,21 @@
+-- Set the correct answer for each adaptability question based on the provided answer key
+UPDATE public.adaptability_questions SET correct_answer = false WHERE "order" = 1;  -- NON
+UPDATE public.adaptability_questions SET correct_answer = true  WHERE "order" = 2;  -- OUI
+UPDATE public.adaptability_questions SET correct_answer = false WHERE "order" = 3;  -- NON
+UPDATE public.adaptability_questions SET correct_answer = false WHERE "order" = 4;  -- NON
+UPDATE public.adaptability_questions SET correct_answer = false WHERE "order" = 5;  -- NON
+UPDATE public.adaptability_questions SET correct_answer = false WHERE "order" = 6;  -- NON
+UPDATE public.adaptability_questions SET correct_answer = false WHERE "order" = 7;  -- NON
+UPDATE public.adaptability_questions SET correct_answer = false WHERE "order" = 8;  -- NON
+UPDATE public.adaptability_questions SET correct_answer = true  WHERE "order" = 9;  -- OUI
+UPDATE public.adaptability_questions SET correct_answer = true  WHERE "order" = 10; -- OUI
+UPDATE public.adaptability_questions SET correct_answer = true  WHERE "order" = 11; -- OUI
+UPDATE public.adaptability_questions SET correct_answer = false WHERE "order" = 12; -- NON
+UPDATE public.adaptability_questions SET correct_answer = true  WHERE "order" = 13; -- OUI
+UPDATE public.adaptability_questions SET correct_answer = true  WHERE "order" = 14; -- OUI
+UPDATE public.adaptability_questions SET correct_answer = false WHERE "order" = 15; -- NON
+UPDATE public.adaptability_questions SET correct_answer = false WHERE "order" = 16; -- NON
+UPDATE public.adaptability_questions SET correct_answer = true  WHERE "order" = 17; -- OUI
+UPDATE public.adaptability_questions SET correct_answer = true  WHERE "order" = 18; -- OUI
+UPDATE public.adaptability_questions SET correct_answer = false WHERE "order" = 19; -- NON
+UPDATE public.adaptability_questions SET correct_answer = true  WHERE "order" = 20; -- OUI 

@@ -1,92 +1,113 @@
-
 import React, { useState } from 'react';
-import { APP_NAME } from '../constants';
-import { UserIcon, LockIcon, LightBulbIcon } from './icons';
+import { supabase } from '../services/supabaseClient';
+import LoadingSpinner from './LoadingSpinner';
 
-interface AuthScreenProps {
-  onAuthSuccess: () => void;
-}
-
-const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
+const AuthScreen: React.FC = () => {
+  const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
-  const handleAuth = () => {
-    // Mock authentication: simply call onAuthSuccess
-    // In a real app, this would involve API calls to Supabase or other backend
-    onAuthSuccess();
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      if (isLogin) {
+        // Sign In
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        // No need to call onAuthSuccess, the context listener will handle it
+      } else {
+        // Sign Up
+        const { data, error } = await supabase.auth.signUp({ 
+          email, 
+          password,
+          options: {
+            // You can add user metadata here if needed
+            // data: { full_name: '...', avatar_url: '...' }
+          }
+        });
+        if (error) throw error;
+        if (data.user && data.user.identities && data.user.identities.length === 0) {
+            setMessage("L'utilisateur existe déjà. Essayez de vous connecter.");
+        } else {
+            setMessage('Inscription réussie ! Veuillez vérifier votre e-mail pour confirmer votre compte.');
+        }
+      }
+    } catch (error: any) {
+      setError(error.error_description || error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-sky-700 p-4">
-      <div className="bg-white p-8 md:p-12 rounded-xl shadow-2xl w-full max-w-md transform transition-all hover:scale-105 duration-300">
-        <div className="text-center mb-8">
-          <LightBulbIcon className="w-16 h-16 text-sky-500 mx-auto mb-4" />
-          <h1 className="text-4xl font-bold text-slate-800">{APP_NAME}</h1>
-          <p className="text-slate-600 mt-2">Identifiez, comprenez, adaptez-vous.</p>
-        </div>
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-lg">
+        <h2 className="text-3xl font-bold text-center text-sky-600 mb-8">
+          {isLogin ? 'Connexion' : 'Inscription'}
+        </h2>
 
-        <form onSubmit={(e) => { e.preventDefault(); handleAuth(); }}>
-          <div className="mb-6">
-            <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1">
+        {error && <p className="bg-red-100 text-red-700 p-3 rounded-md mb-4">{error}</p>}
+        {message && <p className="bg-green-100 text-green-700 p-3 rounded-md mb-4">{message}</p>}
+
+        <form onSubmit={handleAuth} className="space-y-6">
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-slate-700">
               Adresse e-mail
             </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <UserIcon className="h-5 w-5 text-slate-400" />
-              </div>
-              <input
-                type="email"
-                id="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="vous@exemple.com"
-                className="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-colors"
-                required
-              />
-            </div>
+            <input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="mt-1 block w-full px-4 py-3 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-sky-500 focus:border-sky-500"
+              placeholder="votre@email.com"
+            />
           </div>
-
-          <div className="mb-8">
-            <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1">
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium text-slate-700">
               Mot de passe
             </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <LockIcon className="h-5 w-5 text-slate-400" />
-              </div>
-              <input
-                type="password"
-                id="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-sky-500 focus:border-sky-500 transition-colors"
-                required
-              />
-            </div>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={6}
+              className="mt-1 block w-full px-4 py-3 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-sky-500 focus:border-sky-500"
+              placeholder="••••••••"
+            />
           </div>
-
-          <button
-            type="submit"
-            className="w-full bg-sky-600 hover:bg-sky-700 text-white font-semibold py-3 px-4 rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-opacity-50 transition-all duration-150 ease-in-out transform hover:-translate-y-0.5"
-          >
-            Se connecter
-          </button>
+          <div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 disabled:opacity-50"
+            >
+              {loading ? <LoadingSpinner size="sm" /> : (isLogin ? 'Se connecter' : "S'inscrire")}
+            </button>
+          </div>
         </form>
-
-        <p className="mt-8 text-center text-sm text-slate-600">
-          Pas encore de compte ?{' '}
+        <div className="mt-6 text-center">
           <button
-            onClick={handleAuth} // Mock: "Créer un compte" also leads to app
-            className="font-medium text-sky-600 hover:text-sky-500 hover:underline"
+            onClick={() => {
+              setIsLogin(!isLogin);
+              setError(null);
+              setMessage(null);
+            }}
+            className="text-sm text-sky-600 hover:text-sky-500"
           >
-            Créer un compte
+            {isLogin ? "Vous n'avez pas de compte ? Inscrivez-vous" : 'Vous avez déjà un compte ? Connectez-vous'}
           </button>
-        </p>
-         <p className="mt-4 text-center text-xs text-slate-500">
-            Phase 1: Authentification factice. Cliquez pour entrer.
-        </p>
+        </div>
       </div>
     </div>
   );

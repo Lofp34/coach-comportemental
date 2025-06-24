@@ -1,7 +1,14 @@
-
 import React from 'react';
 import { NavLink } from 'react-router-dom';
+import { ChatBubbleLeftRightIcon, UserCircleIcon, AdjustmentsHorizontalIcon, DocumentTextIcon } from '@heroicons/react/24/outline';
 import { NAVIGATION_ITEMS } from '../constants';
+
+const navItems = [
+  { to: '/coach-ia', icon: ChatBubbleLeftRightIcon, label: 'Coach IA' },
+  { to: '/test-profil', icon: UserCircleIcon, label: 'Test Profil' },
+  { to: '/adaptabilite', icon: AdjustmentsHorizontalIcon, label: 'Adaptabilité' },
+  { to: '/fiches-profils', icon: DocumentTextIcon, label: 'Fiches Profils' },
+];
 
 const BottomNavBar: React.FC = () => {
   return (

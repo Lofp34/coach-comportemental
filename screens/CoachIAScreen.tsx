@@ -1,124 +1,134 @@
-
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { AppContext } from '../contexts/AppContext';
-import { getGeminiChatResponse } from '../services/geminiService';
-import { ChatMessage } from '../types';
+import { getGeminiChatResponseStream } from '../services/geminiService';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { DEFAULT_AI_WELCOME_MESSAGE, DEFAULT_AI_TIP_PREFIX, DEFAULT_AI_TIPS, PROFILE_SHEETS_DATA } from '../constants';
 import { PaperAirplaneIcon, UserIcon, ChatBubbleLeftEllipsisIcon as AiIcon } from '../components/icons';
 
+interface ChatMessage {
+  role: 'user' | 'model';
+  parts: { text: string }[];
+  timestamp: Date;
+}
+
 const CoachIAScreen: React.FC = () => {
-  const { userProfile, adaptabilityScore, savedProfiles } = useContext(AppContext);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const { userProfile, adaptabilityScore } = useContext(AppContext);
+  const [history, setHistory] = useState<ChatMessage[]>([]);
   const [userInput, setUserInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [dailyTip, setDailyTip] = useState('');
-
+  const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [history]);
 
   useEffect(() => {
-    // Set initial welcome message from AI
-    setMessages([{ id: Date.now().toString(), sender: 'ai', text: DEFAULT_AI_WELCOME_MESSAGE, timestamp: new Date() }]);
-    
-    // Set daily tip
-    let tip = DEFAULT_AI_TIPS[Math.floor(Math.random() * DEFAULT_AI_TIPS.length)];
-    if (userProfile) {
-      tip = `${DEFAULT_AI_TIP_PREFIX}En tant que profil ${userProfile.profileResult}, ${tip.toLowerCase()}`;
-    } else {
-       tip = `${DEFAULT_AI_TIP_PREFIX}${tip}`;
-    }
-    setDailyTip(tip);
-  }, [userProfile]);
-
-
-  const constructSystemInstruction = (): string => {
-    let instruction = "Vous êtes un coach comportemental expert. Votre objectif est d'aider l'utilisateur à comprendre les profils comportementaux (Rouge, Jaune, Vert, Bleu), à améliorer son adaptabilité et à mieux interagir avec les autres. ";
-    instruction += "Voici les descriptions des profils : \n";
-    PROFILE_SHEETS_DATA.forEach(sheet => {
-        instruction += `Profil ${sheet.profileColor}: ${sheet.keywords.join(', ')}. Forces: ${sheet.strengths.join(', ')}. Faiblesses: ${sheet.weaknesses.join(', ')}.\n`;
-    });
-    return instruction;
-  };
-  
-  const constructPromptForGemini = (query: string): string => {
-    let fullPrompt = `Contexte de l'utilisateur:\n`;
-    if (userProfile) {
-      fullPrompt += `- Mon profil principal est : ${userProfile.profileResult}.\n`;
-    } else {
-      fullPrompt += "- Mon profil principal n'est pas encore défini.\n";
-    }
-    if (adaptabilityScore !== null) {
-      fullPrompt += `- Mon score d'adaptabilité est : ${adaptabilityScore}/20.\n`;
-    }
-    if (savedProfiles.length > 0) {
-      fullPrompt += "- Profils que j'ai sauvegardés :\n";
-      savedProfiles.forEach(p => {
-        fullPrompt += `  - ${p.name} : ${p.profileResult}\n`;
-      });
-    }
-    fullPrompt += `\nMa question : ${query}\n\nRépondez de manière concise et utile en tant que coach.`;
-    return fullPrompt;
-  };
+    // We don't send an initial message anymore, the user starts the conversation.
+    // The context will be part of the first message's history.
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userInput.trim()) return;
+    if (!userInput.trim() || isLoading) return;
 
+    setError(null);
     const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      sender: 'user',
-      text: userInput,
+      role: 'user',
+      parts: [{ text: userInput }],
       timestamp: new Date(),
     };
-    setMessages((prevMessages) => [...prevMessages, userMessage]);
+    
+    const updatedUiHistory = [...history, userMessage];
+    setHistory(updatedUiHistory);
     setUserInput('');
     setIsLoading(true);
 
-    const systemInstruction = constructSystemInstruction();
-    const fullPrompt = constructPromptForGemini(userInput);
-    
-    // For generateContent, history is part of the prompt construction or system message.
-    // Here, `fullPrompt` contains current context. `systemInstruction` sets persona.
-    const aiResponseText = await getGeminiChatResponse([], fullPrompt, systemInstruction); // History passed as empty because prompt has context.
-
-    const aiMessage: ChatMessage = {
-      id: (Date.now() + 1).toString(), // ensure unique id
-      sender: 'ai',
-      text: aiResponseText,
+    // Add a placeholder for the AI's response
+    const aiMessagePlaceholder: ChatMessage = {
+      role: 'model',
+      parts: [{ text: '' }],
       timestamp: new Date(),
     };
-    setMessages((prevMessages) => [...prevMessages, aiMessage]);
-    setIsLoading(false);
+    setHistory(prev => [...prev, aiMessagePlaceholder]);
+
+    // History for the API call should not contain the user's latest message yet,
+    // as it will be the one kicking off the stream.
+    const apiHistory = updatedUiHistory.map(msg => ({ role: msg.role, parts: msg.parts }));
+
+    let systemInstruction;
+    // The context is now a dedicated system instruction.
+    if (apiHistory.length === 1) {
+      let context = `Vous êtes un coach comportemental expert. Votre objectif est d'aider l'utilisateur à comprendre les profils comportementaux (Rouge, Jaune, Vert, Bleu) et à s'améliorer. Voici le contexte de l'utilisateur actuel:\n`;
+      if (userProfile && userProfile.profileResult) {
+        context += `- Son profil principal est : ${userProfile.profileResult.join(' / ')}.\n`;
+      } else {
+        context += `- Son profil principal n'est pas encore défini.\n`;
+      }
+      if (adaptabilityScore) {
+        context += `- Son score d'adaptabilité est de ${adaptabilityScore}.\n`;
+      }
+      
+      systemInstruction = {
+        parts: [{ text: context }]
+      };
+    }
+
+    await getGeminiChatResponseStream(
+      apiHistory,
+      systemInstruction,
+      (chunk) => {
+        setHistory(prevHistory => {
+          const newHistory = [...prevHistory];
+          const lastMessage = newHistory[newHistory.length - 1];
+          if (lastMessage && lastMessage.role === 'model') {
+            lastMessage.parts[0].text += chunk;
+          }
+          return newHistory;
+        });
+      },
+      (err) => {
+        setError(err);
+        // Remove placeholder if there was an error
+        setHistory(prev => prev.slice(0, -1));
+      },
+      () => {
+        setIsLoading(false);
+      }
+    );
   };
 
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)] bg-white shadow-xl rounded-lg overflow-hidden">
-      {/* Header */}
       <header className="bg-sky-600 text-white p-4">
         <h1 className="text-xl font-semibold">Coach IA</h1>
-        {dailyTip && <p className="text-sm opacity-90 mt-1">{dailyTip}</p>}
       </header>
       
-      {/* Chat Messages */}
       <div className="flex-grow p-4 space-y-4 overflow-y-auto bg-slate-50">
-        {messages.map((msg) => (
-          <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`flex items-end max-w-xs md:max-w-md lg:max-w-lg ${msg.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-              {msg.sender === 'ai' && <AiIcon className="w-8 h-8 rounded-full bg-sky-500 text-white p-1.5 mr-2 flex-shrink-0" />}
-              {msg.sender === 'user' && <UserIcon className="w-8 h-8 rounded-full bg-slate-500 text-white p-1.5 ml-2 flex-shrink-0" />}
+        {error && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                <strong className="font-bold">Erreur: </strong>
+                <span className="block sm:inline">{error}</span>
+            </div>
+        )}
+        {history.length === 0 && !isLoading && (
+            <div className="text-center text-gray-500 pt-16">
+                <p>Posez votre première question au Coach IA pour commencer.</p>
+            </div>
+        )}
+        {history.map((msg, index) => (
+          <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div className={`flex items-end max-w-xs md:max-w-md lg:max-w-lg ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+              {msg.role === 'model' && <AiIcon className="w-8 h-8 rounded-full bg-sky-500 text-white p-1.5 mr-2 flex-shrink-0" />}
+              {msg.role === 'user' && <UserIcon className="w-8 h-8 rounded-full bg-slate-500 text-white p-1.5 ml-2 flex-shrink-0" />}
               <div
                 className={`px-4 py-2.5 rounded-2xl shadow ${
-                  msg.sender === 'user'
+                  msg.role === 'user'
                     ? 'bg-sky-500 text-white rounded-br-none'
                     : 'bg-white text-slate-700 rounded-bl-none border border-slate-200'
                 }`}
               >
-                <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
-                <p className={`text-xs mt-1 ${msg.sender === 'user' ? 'text-sky-200 text-right' : 'text-slate-400 text-left'}`}>
+                <p className="text-sm whitespace-pre-wrap">{msg.parts[0].text}</p>
+                <p className={`text-xs mt-1 ${msg.role === 'user' ? 'text-sky-200 text-right' : 'text-slate-400 text-left'}`}>
                   {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </p>
               </div>
@@ -138,7 +148,6 @@ const CoachIAScreen: React.FC = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Form */}
       <form onSubmit={handleSubmit} className="p-4 border-t border-slate-200 bg-white">
         <div className="flex items-center space-x-2">
           <input
@@ -151,7 +160,7 @@ const CoachIAScreen: React.FC = () => {
           />
           <button
             type="submit"
-            className="bg-sky-600 hover:bg-sky-700 text-white p-3 rounded-lg disabled:opacity-50 transition-colors flex items-center justify-center w-12 h-12" // Fixed size for button
+            className="bg-sky-600 hover:bg-sky-700 text-white p-3 rounded-lg disabled:opacity-50 transition-colors flex items-center justify-center w-12 h-12"
             disabled={isLoading || !userInput.trim()}
           >
             {isLoading ? <LoadingSpinner size="sm" color="text-white"/> : <PaperAirplaneIcon className="w-5 h-5" />}
